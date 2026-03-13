@@ -1,7 +1,7 @@
 /**************************CrowPanel ESP32 HMI Display Example Code************************
 Version     :	1.1
 Suitable for:	CrowPanel ESP32 HMI Display but you have to kill the touch
-orginally done in 2012 with a ColdTearsElectronics 5" 800x450 display on an arduino MEGA
+orginally done in 2012 with a ColdTearsElectronics 5" 800x480 display on an arduino MEGA
 CrowPanel 5" is 800 x 480
 **************************************************************/
 #include <Wire.h>
@@ -10,7 +10,6 @@ CrowPanel 5" is 800 x 480
 #include <WiFiManager.h>  // Include the WiFiManager library
 #include <WebServer.h>
 #include <ESPmDNS.h>
-//#include <ArduinoOTA.h>
 #include <TimeLib.h>   //https://github.com/PaulStoffregen/Time
 #include <Timezone.h>  //https://github.com/JChristensen/Timezone
 #include <TimeLord.h>
@@ -18,6 +17,7 @@ CrowPanel 5" is 800 x 480
 #include <Adafruit_AHTX0.h>
 #include <SD.h>        // For microSD card access
 #include "gfx_conf.h"  // this is the display panel config
+#include <ArduinoOTA.h>// added OTA updating
 
 //Modify the corresponding pin according to the circuit diagram.
 #define SD_MOSI 11
@@ -29,7 +29,7 @@ SPIClass SD_SPI;
 File rootSDcard;
 //
 #define HOSTNAME "Barometer"
-#define VERSION "1.5"
+#define VERSION "1.7"
 //
 Adafruit_AHTX0 aht;
 
@@ -93,24 +93,24 @@ float hourlyMb[24];       // millibars for the pressure change readings
 int xMargin = 110;        // inset of graph
 int masterScale = 0;
 //
-void handleClock();// handles all the clock, baromemter/garbage day stuff
-void handle_BarReadings();// saves all the barometer graph
-void showBarometerHeadings();// shows the current pressure etc
-void readATH20();// read the humditiy and temperature
-void bmpRead();// from BMP280
-void getSunTimes(uint8_t theDay, uint8_t theMonth, int theYear, uint8_t theDOW, uint8_t dstCorrection);// sunrise/set
-void drawWiFiQuality();// graph for wifi
-int8_t getWifiQuality();// signal strength
-time_t getNtpTime();// get from time server
-void sendNTPpacket(IPAddress &address);// ask for time
-void showGraphLabels();// sunrise/set etc
-void showPressureGraph();// shows the graph of pressure (L->R)
-void drawChangeGraphic();// graphic bmp to show steady/rise/fall in pressure 3hr window
-void printDirectory(File dir, int numTabs);// just to display filenames on the SD card
-void drawBmp(fs::FS &fs, const char *filename, int16_t x, int16_t y);// actual drawing routine
-uint16_t read16(fs::File &f);// routines to read bytes etc
+void handleClock();                                                                                      // handles all the clock, baromemter/garbage day stuff
+void handle_BarReadings();                                                                               // saves all the barometer graph
+void showBarometerHeadings();                                                                            // shows the current pressure etc
+void readATH20();                                                                                        // read the humditiy and temperature
+void bmpRead();                                                                                          // from BMP280
+void getSunTimes(uint8_t theDay, uint8_t theMonth, int theYear, uint8_t theDOW, uint8_t dstCorrection);  // sunrise/set
+void drawWiFiQuality();                                                                                  // graph for wifi
+int8_t getWifiQuality();                                                                                 // signal strength
+time_t getNtpTime();                                                                                     // get from time server
+void sendNTPpacket(IPAddress &address);                                                                  // ask for time
+void showGraphLabels();                                                                                  // sunrise/set etc
+void showPressureGraph();                                                                                // shows the graph of pressure (L->R)
+void drawChangeGraphic();                                                                                // graphic bmp to show steady/rise/fall in pressure 3hr window
+void printDirectory(File dir, int numTabs);                                                              // just to display filenames on the SD card
+void drawBmp(fs::FS &fs, const char *filename, int16_t x, int16_t y);                                    // actual drawing routine
+uint16_t read16(fs::File &f);                                                                            // routines to read bytes etc
 uint32_t read32(fs::File &f);
-bool garbageTest();// look at the day to see what can goes out
+bool garbageTest();  // look at the day to see what can goes out
 //
 void setup() {
   Serial.begin(115200);
@@ -163,8 +163,15 @@ void setup() {
     setSyncInterval(ntpUpdateFrequency * 60);
   }
   tft.fillScreen(TFT_BLACK);
+  //
+  // OTA Setup
+ // String hostname(HOSTNAME);
+ // WiFi.hostname(hostname);
+  ArduinoOTA.setHostname("Barometer");
+  // ArduinoOTA.setPassword((const char *)"12345");
+  ArduinoOTA.begin();
 }
-
+//
 void loop() {
   static time_t prevDisplay = 0;
   timeStatus_t ts = timeStatus();
@@ -185,7 +192,8 @@ void loop() {
       delay(3000);
       ESP.restart();
   }
-  //delay(50);  // wait 5 seconds for next scan
+  // Handle OTA update requests, so you can update the firmware via Wifi
+  ArduinoOTA.handle();
 }
 //To Display <Setup> if not connected to AP
 void configModeCallback(WiFiManager *myWiFiManager) {
@@ -227,12 +235,17 @@ void handleClock() {
   tft.drawString(buffer, 180, 24, 7);            // Overwrite the text to clear it
   tft.setTextColor(TFT_WHITE, TFT_BLACK);        // character colour and background
   if (lastDay != myDay) {                        // if the day has changed or has been updated, update date info
-    tft.fillRect(250, 140, 276, 30, TFT_BLACK);  // erase anything there (font overlap)
+    tft.fillRect(250, 140, 320, 30, TFT_BLACK);  // erase anything there (font overlap)
     tft.setTextSize(1);
     tft.setFont(&fonts::FreeSerif18pt7b);  // custom font
-    tft.setCursor(266, 140);               // roughly middle
-    sprintf(buffer, "%s %s %2u, %4u\0", shortDOW[myWeekDay - 1], shortMON[myMonth - 1], myDay, myYear);
-    tft.print(buffer);  // display the calendar info
+    if (myDay < 10) {                      // format slightly different for date less than 10...
+      tft.setCursor(276, 140);             // roughly middle
+      sprintf(buffer, "%s %s %1u, %4u", shortDOW[myWeekDay - 1], shortMON[myMonth - 1], myDay, myYear);
+    } else {
+      tft.setCursor(266, 140);  // roughly middle
+      sprintf(buffer, "%s %s %2u, %4u", shortDOW[myWeekDay - 1], shortMON[myMonth - 1], myDay, myYear);
+    }
+    tft.printf(buffer);  // display the calendar info
   }
   if (runOnce == false) {
     getSunTimes(myDay, myMonth, myYear, myWeekDay, dstCorrection);  // checks only at a specific time
@@ -249,15 +262,15 @@ void handleClock() {
   }
   //
   if (lastHour != my24Hour) {
-    handle_BarReadings();    // go update the bargraph array
+    handle_BarReadings();  // go update the bargraph array
   }
   //
   if (myWeekDay == triggerDAY) {              // we are on a tuesday
     if (showingWaste == false) {              // we ONLY need to check once on a Tuesday
       if (recycleTest() == false) {           // false if it's garbage (else its recycle)
-        drawBmp(SD, "/trash.bmp", 54, 26);  //display the image 96 x 96, 24bit
+        drawBmp(SD, "/trash.bmp", 54, 26);    //display the image 96 x 96, 24bit
       } else {                                // it's a garbage day
-        drawBmp(SD, "/recycle.bmp", 54, 26);    //display the image 96 x 96, 24bit
+        drawBmp(SD, "/recycle.bmp", 54, 26);  //display the image 96 x 96, 24bit
       }
       showingWaste = true;  // dont do it once on trigger day, then check following day
     }
@@ -307,7 +320,7 @@ void showBarometerHeadings() {
   tft.setTextSize(1);                  // sets the text size
   tft.setFont(&fonts::FreeMono9pt7b);  // Set custom font
   tft.setCursor(110, baroHeadingsY);   //set cursor
-  sprintf(displayUT, "inHG:%2u.%02u\0", bar1, bar2);
+  sprintf(displayUT, "inHG:%2u.%02u", bar1, bar2);
   tft.print(displayUT);
   tft.setCursor(360, baroHeadingsY);
   tft.print("m:" + String(mBars));  // mBars
@@ -370,7 +383,7 @@ void getSunTimes(uint8_t theDay, uint8_t theMonth, int theYear, uint8_t theDOW, 
     //    Serial.println(today[tl_minute], DEC);
     sunRiseHour = today[tl_hour] + dstCorrection;
     sunRiseMinute = today[tl_minute];
-    sprintf(sunRiseTime, "Sunrise:%2u:%02u\0", sunRiseHour, sunRiseMinute);
+    sprintf(sunRiseTime, "Sunrise:%2u:%02u", sunRiseHour, sunRiseMinute);
     tft.setCursor(180, 186);  // left side
     tft.print(sunRiseTime);   // show the sunrise time
   }
@@ -378,9 +391,9 @@ void getSunTimes(uint8_t theDay, uint8_t theMonth, int theYear, uint8_t theDOW, 
     //    Serial.println(today[tl_minute], DEC);
     sunSetHour = today[tl_hour] + dstCorrection;
     sunSetMinute = today[tl_minute];
-    sprintf(sunSetTime, "Sunset:%2u:%02u\0", sunSetHour - 12, sunSetMinute);  //the sunSetHour will be in 12hr format
-    tft.setCursor(492, 186);                                                  //; column, row
-    tft.print(sunSetTime);                                                    // show the sunset time
+    sprintf(sunSetTime, "Sunset:%2u:%02u", sunSetHour - 12, sunSetMinute);  //the sunSetHour will be in 12hr format
+    tft.setCursor(492, 186);                                                //; column, row
+    tft.print(sunSetTime);                                                  // show the sunset time
   }
 }
 //
@@ -563,14 +576,14 @@ void drawChangeGraphic() {
   for (uint8_t findData = 0; findData < 24; findData++) {
     if (hourlyMb[findData] != 0) {
       dataSpot = findData;  // save the spot (it just counts up)
-//      Serial.print("Data at Spot:");
-//      Serial.println(dataSpot);
+                            //      Serial.print("Data at Spot:");
+                            //      Serial.println(dataSpot);
     }
   }
   // at this point dataSpot will be the highest point in the array
   if (dataSpot < 3) {  // less than a 3 hour cycle
- //   Serial.println("Not enough data yet");
-    return;  // bail out of the rest of the routine
+                       //   Serial.println("Not enough data yet");
+    return;            // bail out of the rest of the routine
   }
   //Serial.println("Using DataSpot and - 3");
   float changeRate = hourlyMb[dataSpot] - hourlyMb[dataSpot - 3];  // check the three hour trend
