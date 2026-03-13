@@ -1,7 +1,16 @@
 # Barometer
-Crowpanel 5" Barometer with garbage day reminder
+Crowpanel 5" Barometer with garbage day reminder. Simple, two trick pony...
+----
 
-I originally used an Arduino MEGA with a ColdTears 5" display as a barometer and it's a little long in the tooth now. Time to update it. In hunting around for a 5" TFT display I happened across the Crowpanel 5" TFT with the build in ESP32S3. So that was the start. After toying with LVGL and getting nowhere I decided to use libraries that I had worked with before and were at least familar with. All compiled using the Arduino IDE 2.3.8.
+V1.7 update:
+* Fixed weekday, month, day, year display line. Artifacts left over from single day digit.
+* Added OTA (over the air update) so updated code can be uploaded via wifi
+----
+I originally used an Arduino MEGA with a ColdTears 5" display in 2012 as a barometer and it's a little long in the tooth now.
+
+<img width="350" height="216" alt="Baro_ORG" src="https://github.com/user-attachments/assets/6a9b94b5-e9a8-4044-b08c-88e8abb41906" />
+
+Time to update it. In hunting around for a 5" TFT display I happened across the Crowpanel 5" TFT with the build in ESP32S3. So that was the start. After toying with LVGL and getting nowhere I decided to use libraries that I had worked with before and were at least familar with. All compiled using the Arduino IDE 2.3.8.
 
 The single drawback to this code is that it negates the touch screen portion. In order to be able to read the I2C BMP280/ATH20 I had to "nop" out the touch portion of the gxf code. Hence thats why there is a special gfx_conf.h included with this project.
 
