@@ -4,7 +4,7 @@ Crowpanel 5" Barometer with garbage day reminder. Simple, two trick pony...
 
 V1.7 update:
 * Fixed weekday, month, day, year display line. Artifacts left over from single day digit.
-* Added OTA (over the air update) so updated code can be uploaded via wifi
+* Added OTA (over the air update) so updated code can be uploaded via wifi. The display WILL go bonkers during the uploading but reboot on completion and all is well.
 ----
 I originally used an Arduino MEGA with a ColdTears 5" display in 2012 as a barometer and it's a little long in the tooth now and three years prior to starting with scratch building my first delta 3D printer (that's still running with slightly less than 10,000hrs on it)...
 
