@@ -6,7 +6,7 @@ V1.7 update:
 * Fixed weekday, month, day, year display line. Artifacts left over from single day digit.
 * Added OTA (over the air update) so updated code can be uploaded via wifi
 ----
-I originally used an Arduino MEGA with a ColdTears 5" display in 2012 as a barometer and it's a little long in the tooth now and three prior to starting with scratch building my first delta 3D printer (that's still running with slightly less than 10,000hrs on it)...
+I originally used an Arduino MEGA with a ColdTears 5" display in 2012 as a barometer and it's a little long in the tooth now and three years prior to starting with scratch building my first delta 3D printer (that's still running with slightly less than 10,000hrs on it)...
 
 <img width="350" height="216" alt="Baro_ORG" src="https://github.com/user-attachments/assets/6a9b94b5-e9a8-4044-b08c-88e8abb41906" />
 
