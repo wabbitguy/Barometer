@@ -58,3 +58,10 @@ M2 x 6 for the BMP280/ATH20 mount.
 
 <img width="350" height="327" alt="rearSesnor" src="https://github.com/user-attachments/assets/390bd8ef-9bf7-4b3c-8a31-693275e666cc" />
 
+------
+<h3>Arduino IDE Tool Setup</h3>
+
+This is the settings used for the Arduino 2.3.8 IDE in order to be able to upload via WiFi.
+
+<img width="400" height="372" alt="Arduino_IDE_Setup" src="https://github.com/user-attachments/assets/ccbebb57-2c7b-4464-8a61-18e66c1f5f6b" />
+
