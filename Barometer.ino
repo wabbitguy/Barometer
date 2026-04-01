@@ -15,9 +15,9 @@ CrowPanel 5" is 800 x 480
 #include <TimeLord.h>
 #include <Adafruit_BMP280.h>
 #include <Adafruit_AHTX0.h>
-#include <SD.h>        // For microSD card access
-#include "gfx_conf.h"  // this is the display panel config
-#include <ArduinoOTA.h>// added OTA updating
+#include <SD.h>          // For microSD card access
+#include "gfx_conf.h"    // this is the display panel config
+#include <ArduinoOTA.h>  // added OTA updating
 
 //Modify the corresponding pin according to the circuit diagram.
 #define SD_MOSI 11
@@ -29,7 +29,7 @@ SPIClass SD_SPI;
 File rootSDcard;
 //
 #define HOSTNAME "Barometer"
-#define VERSION "1.7"
+#define VERSION "1.8"
 //
 Adafruit_AHTX0 aht;
 
@@ -45,7 +45,9 @@ float pressure, kPa, mBars, inches, tempC, tempF, myHumidity;
 //US Pacific Time Zone (British Columia changes to forever bcPDT as of March 8, 2026)
 TimeChangeRule bcPDT = { "PDT", Second, dowSunday, Mar, 2, -420 };  // 7 hour offset
 TimeChangeRule bcPST = { "PST", First, dowSunday, Nov, 2, -480 };   // 8 hour offset
-Timezone usPT(bcPDT, bcPDT);
+String fallTZLabel = "PST";// this is the fall time change if you have one
+Timezone timeZoneRule(bcPDT, bcPDT);
+
 //Pointer To The Time Change Rule, Use to Get The TZ Abbrev
 TimeChangeRule *tcr;
 time_t utc;
@@ -69,9 +71,9 @@ const String shortDOW[7] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
 const String shortMON[12] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 uint16_t baroHeadingsY = 220;
 //
-uint8_t triggerDAY = 3;     // Pick the day to aleart you...Sun = 1, Mon = 2, etc
-bool runOnce = false;       // this sets up the check for trigger days
-bool showingWaste = false;  // used to know when we are showing the garbage/recycle cans
+uint8_t triggerDAY = 3;   // Pick the day to aleart you...Sun = 1, Mon = 2, etc
+bool runOnce = false;     // this sets up the check for trigger days
+bool showingCan = false;  // used to know when we are showing the garbage/recycle cans
 //
 //NTP Server http://tf.nist.gov/tf-cgi/servers.cgi
 static const char ntpServerName[] = "pool.ntp.org";
@@ -110,7 +112,7 @@ void printDirectory(File dir, int numTabs);                                     
 void drawBmp(fs::FS &fs, const char *filename, int16_t x, int16_t y);                                    // actual drawing routine
 uint16_t read16(fs::File &f);                                                                            // routines to read bytes etc
 uint32_t read32(fs::File &f);
-bool garbageTest();  // look at the day to see what can goes out
+bool newCanTest();  // look at the day to see what can goes out
 //
 void setup() {
   Serial.begin(115200);
@@ -165,8 +167,8 @@ void setup() {
   tft.fillScreen(TFT_BLACK);
   //
   // OTA Setup
- // String hostname(HOSTNAME);
- // WiFi.hostname(hostname);
+  // String hostname(HOSTNAME);
+  // WiFi.hostname(hostname);
   ArduinoOTA.setHostname("Barometer");
   // ArduinoOTA.setPassword((const char *)"12345");
   ArduinoOTA.begin();
@@ -210,20 +212,34 @@ void configModeCallback(WiFiManager *myWiFiManager) {
 void handleClock() {
   tmElements_t tm;
   breakTime(now(), tm);
+  char buffer[24];            // holds the formated time/day/date
   uint8_t dstCorrection = 0;  // default to off
-  time_t local = usPT.toLocal(utc, &tcr);
-  if (usPT.locIsDST(local)) {  // check to see if we're in daylight savings time
+  uint8_t currentWeek;
+  uint16_t dayOfTheYear;
+
+  // --- Current local time ---
+  time_t utc = now();
+  time_t localTime = timeZoneRule.toLocal(utc, &tcr);
+
+  if (String(tcr->abbrev) == fallTZLabel) {// handles a fall time change
     dstCorrection = 1;
   }
-  char buffer[24];  // holds the formated time/day/date
-  myHour = hourFormat12(local);
-  myDay = day(local);
-  my24Hour = hour(local);  // we need the 24 hour clock time
-  myMinute = minute();
-  mySecond = second();
-  myWeekDay = weekday(local);
-  myMonth = month(local);
-  myYear = year(local);
+
+  myWeekDay = weekday(localTime);
+  myHour = hourFormat12(localTime);
+  myDay = day(localTime);
+  my24Hour = hour(localTime);    // 24-hour clock
+  myMinute = minute(localTime);  // use localTime
+  mySecond = second(localTime);  // use localTime
+  myYear = year(localTime);
+  myMonth = month(localTime);  // 1 to 12
+
+  struct tm *timeinfo;
+  timeinfo = localtime(&localTime);
+
+  dayOfTheYear = timeinfo->tm_yday + 1;  // tm_yday is 0-365
+  currentWeek = ((timeinfo->tm_yday + 7 - timeinfo->tm_wday) / 7) + 1;
+
   tft.setTextColor(TFT_GREEN, TFT_BLACK);  // character colour and background
   // add code here to print the date info
   if (display24HR == true) {
@@ -247,6 +263,25 @@ void handleClock() {
     }
     tft.printf(buffer);  // display the calendar info
   }
+  //
+  if (myWeekDay == triggerDAY) {              // we are on a tuesday
+    if (showingCan == false) {                // we ONLY need to check once on a Tuesday
+      if (newCanTest(currentWeek) == true) {  // true is it's a recycle day (even week), false is garbage
+        drawBmp(SD, "/trash.bmp", 54, 26);    //display the image 96 x 96, 24bit
+        //Serial.println("trash");
+      } else {                                // garbage day
+        drawBmp(SD, "/recycle.bmp", 54, 26);  //display the image 96 x 96, 24bit
+        //Serial.println("recycle");
+      }
+      showingCan = true;  // dont do it once on trigger day, then check following day
+    }
+  } else {                                      // we are any day of the week BUT tuesday
+    if (showingCan == true) {                   // if this is true we have a different day of the week
+      tft.fillRect(54, 26, 96, 96, TFT_BLACK);  // this clears the whole graphic
+      showingCan = false;                       // reset the flag so we run it next trigger day in a week
+    }
+  }
+  //
   if (runOnce == false) {
     getSunTimes(myDay, myMonth, myYear, myWeekDay, dstCorrection);  // checks only at a specific time
     runOnce = true;                                                 // dont do it again until 2am
@@ -263,22 +298,6 @@ void handleClock() {
   //
   if (lastHour != my24Hour) {
     handle_BarReadings();  // go update the bargraph array
-  }
-  //
-  if (myWeekDay == triggerDAY) {              // we are on a tuesday
-    if (showingWaste == false) {              // we ONLY need to check once on a Tuesday
-      if (recycleTest() == false) {           // false if it's garbage (else its recycle)
-        drawBmp(SD, "/trash.bmp", 54, 26);    //display the image 96 x 96, 24bit
-      } else {                                // it's a garbage day
-        drawBmp(SD, "/recycle.bmp", 54, 26);  //display the image 96 x 96, 24bit
-      }
-      showingWaste = true;  // dont do it once on trigger day, then check following day
-    }
-  } else {                                      // we are any day of the week BUT tuesday
-    if (showingWaste == true) {                 // if this is true we have a different day of the week
-      tft.fillRect(54, 26, 96, 96, TFT_BLACK);  // this clears the whole graphic
-      showingWaste = false;                     // reset the flag so we run it next trigger day in a week
-    }
   }
   //
   if (mySecond == 15) {
@@ -732,22 +751,17 @@ uint32_t read32(fs::File &f) {
   return result;
 }
 //
-bool recycleTest() {
-  time_t now;
-  struct tm *timeinfo;
-  time(&now);
-  timeinfo = localtime(&now);
-  int days_since_reference = timeinfo->tm_yday + (timeinfo->tm_year * 365) + (timeinfo->tm_year / 4);
-
-  // Calculate which week number this is
-  int week_number = days_since_reference / 7;
-
-  // Determine which can based on even/odd week
+bool newCanTest(int week_number) {
+  Serial.print("Week Number:");
+  Serial.println(week_number);
+  // Determine if the week number is odd or even
   if (week_number % 2 == 0) {
-    //Serial.println("This Tuesday: Put out RECYCLE can");
-    return true;
+    //printf("The current week (%d) is even.\n", week_number);
+    Serial.println("EVEN WEEK");
+    return true;  // even week is garbage
   } else {
-    //Serial.println("This Tuesday: Put out GARBAGE can");
-    return false;
+    //printf("The current week (%d) is odd.\n", week_number);
+    Serial.println("ODD Numbered WEEK");
+    return false;  // an odd week is a recycle
   }
 }
